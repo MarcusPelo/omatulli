@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "marcuspelo.omatulli",
+  "name": "Omatulli",
+  "version": "0.1.0",
+  "author": "marcuspelo",
+  "license": "MIT",
+  "description": "Current playing activity from Tautulli (Plex), stacked cards for movies, TV episodes and music.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Tautulli Activity",
+    "description": "Shows what's currently playing on Plex via Tautulli, with progress, ETA and stream details.",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "baseUrl": "http://localhost:8181",
+      "refreshIntervalSec": 10,
+      "maskLocation": true
+    },
+    "schema": [
+      {
+        "key": "baseUrl",
+        "type": "string",
+        "label": "Tautulli base URL",
+        "description": "Base URL of the Tautulli instance (no trailing slash)",
+        "defaultValue": "http://localhost:8181"
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 10
+      },
+      {
+        "key": "maskLocation",
+        "type": "boolean",
+        "label": "Hide public IP",
+        "description": "Show only WAN/LAN instead of the full public IP address",
+        "defaultValue": true
+      }
+    ]
+  }
+}
