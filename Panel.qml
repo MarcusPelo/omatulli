@@ -44,6 +44,11 @@ Panel {
   property bool hasError: false
   property string errorText: ""
 
+  property var imageCache: ({})
+  property var imageCacheError: ({})
+  property var imageQueue: []
+  property bool imageFetchBusy: false
+
   property string viewMode: "list"
   property string draftBaseUrl: ""
   property int draftRefreshIntervalSec: 10
@@ -201,11 +206,52 @@ Panel {
     return s.thumb || s.art || ""
   }
 
+  function cacheDir() {
+    var xdg = Quickshell.env("XDG_CACHE_HOME")
+    if (xdg && xdg.length > 0) return xdg + "/omatulli"
+    return Quickshell.env("HOME") + "/.cache/omatulli"
+  }
+
+  function sanitizeKey(s) {
+    return String(s).replace(/[^a-zA-Z0-9]+/g, "_")
+  }
+
+  // Images are fetched via curl (apikey sent over stdin, never argv/URL — see
+  // imageFetchProc) into a local cache file, and Image.source points at that
+  // file. Tautulli's pms_image_proxy has no way to authenticate an inline
+  // QML Image element without putting the apikey in the URL, so this proxy
+  // step is what keeps the key out of network/proxy logs for posters too.
+  function requestImage(remotePath, width, height) {
+    if (!remotePath || !root.apiKeyLoaded || !root.apiKey) return ""
+    var key = root.sanitizeKey(remotePath) + "_" + width + "x" + height
+    if (root.imageCache[key]) return root.imageCache[key]
+    if (root.imageCacheError[key]) return ""
+    for (var i = 0; i < root.imageQueue.length; i++) {
+      if (root.imageQueue[i].key === key) return ""
+    }
+    root.imageQueue.push({ key: key, remotePath: remotePath, width: width, height: height })
+    root.pumpImageQueue()
+    return ""
+  }
+
+  function pumpImageQueue() {
+    if (root.imageFetchBusy || root.imageQueue.length === 0 || imageFetchProc.running) return
+    root.imageFetchBusy = true
+    var item = root.imageQueue.shift()
+    var outFile = root.cacheDir() + "/" + item.key
+    imageFetchProc.outFile = outFile
+    imageFetchProc.pendingKey = item.key
+    imageFetchProc.reqQuery = "apikey=" + root.apiKey + "&cmd=pms_image_proxy&img="
+      + encodeURIComponent(item.remotePath) + "&width=" + item.width + "&height=" + item.height
+    imageFetchProc.command = ["curl", "-fsS", "--max-time", "8", "--data", "@-", "-o", outFile, root.baseUrl + "/api/v2"]
+    imageFetchProc.stdinEnabled = true
+    imageFetchProc.running = true
+  }
+
   function posterUrl(s) {
-    if (!root.apiKeyLoaded || !root.apiKey) return ""
     var path = root.posterPath(s)
     if (!path) return ""
-    return root.baseUrl + "/api/v2?apikey=" + root.apiKey + "&cmd=pms_image_proxy&img=" + encodeURIComponent(path) + "&width=200&height=300"
+    return root.requestImage(path, 200, 300)
   }
 
   function stateColor(state) {
@@ -246,8 +292,9 @@ Panel {
     }
     if (!activityProc.running) {
       loading = true
-      activityProc.command = ["curl", "-fsS", "--max-time", "6",
-        root.baseUrl + "/api/v2?apikey=" + root.apiKey + "&cmd=get_activity"]
+      // apikey goes over stdin (see onStarted below), never in argv or the URL.
+      activityProc.command = ["curl", "-fsS", "--max-time", "6", "--data", "@-", root.baseUrl + "/api/v2"]
+      activityProc.stdinEnabled = true
       activityProc.running = true
     }
   }
@@ -341,7 +388,11 @@ Panel {
     path: Quickshell.env("HOME") + "/.config/omatulli/.env"
     watchChanges: true
     printErrors: false
-    onLoaded: root.parseEnv(text())
+    onLoaded: {
+      root.parseEnv(text())
+      envPermProc.command = ["chmod", "600", envFile.path]
+      envPermProc.running = true
+    }
     onLoadFailed: {
       root.apiKeyLoaded = true
       root.hasError = true
@@ -349,11 +400,22 @@ Panel {
     }
   }
 
+  // Enforces 0600 on the credential file every time it's (re-)loaded, since
+  // it holds the Tautulli API key and nothing else guarantees its mode.
+  Process {
+    id: envPermProc
+  }
+
   Process {
     id: activityProc
+    stdinEnabled: true
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.handleActivity(text)
+    }
+    onStarted: {
+      activityProc.write("apikey=" + root.apiKey + "&cmd=get_activity")
+      activityProc.stdinEnabled = false
     }
     onExited: function(code) {
       if (code !== 0) {
@@ -363,6 +425,39 @@ Panel {
       }
     }
   }
+
+  Process {
+    id: imageFetchProc
+    property string outFile: ""
+    property string pendingKey: ""
+    property string reqQuery: ""
+    stdinEnabled: true
+    onStarted: {
+      imageFetchProc.write(imageFetchProc.reqQuery)
+      imageFetchProc.stdinEnabled = false
+    }
+    onExited: function(code) {
+      var key = imageFetchProc.pendingKey
+      if (code === 0 && imageFetchProc.outFile) {
+        var nextCache = Object.assign({}, root.imageCache)
+        nextCache[key] = "file://" + imageFetchProc.outFile
+        root.imageCache = nextCache
+      } else {
+        var nextErr = Object.assign({}, root.imageCacheError)
+        nextErr[key] = true
+        root.imageCacheError = nextErr
+      }
+      root.imageFetchBusy = false
+      root.pumpImageQueue()
+    }
+  }
+
+  Process {
+    id: cacheSetupProc
+    command: ["bash", "-c", 'mkdir -p "$1" && find "$1" -maxdepth 1 -type f -mtime +14 -delete', "omatulli", root.cacheDir()]
+  }
+
+  Component.onCompleted: cacheSetupProc.running = true
 
   Timer {
     id: pollTimer

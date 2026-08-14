@@ -11,7 +11,7 @@ An [Omarchy](https://omarchy.org/) bar widget for [Tautulli](https://tautulli.co
   - Movies: title + year
   - TV episodes: show + episode title, `S{season} · E{episode}`
   - Music: track + artist, album
-- **Poster / album art** — fetched from Tautulli's `pms_image_proxy` API command
+- **Poster / album art** — fetched from Tautulli's `pms_image_proxy` API command and cached locally under `~/.cache/omatulli/`
 - **Full stream detail** — product, player, stream decision (Direct Play/Direct Stream/Transcode), container, video, audio, subtitle and quality lines, mirroring Tautulli's own Activity view
 - **Progress bar** with elapsed/total time and ETA (wall-clock finish time)
 - **User avatar + name** per session
@@ -42,6 +42,14 @@ omarchy plugin add https://github.com/marcuspelo/omatulli.git
    omarchy bar set marcuspelo.omatulli baseUrl "http://your-tautulli-host:8181"
    ```
    This step is optional if `URL_BASE` is already set in `.env`.
+
+## Security
+
+The Tautulli API key never appears in process arguments or request URLs:
+
+- The `get_activity` call is a `curl` POST with the key sent over the child process's stdin (`--data @-`), not as a `-H`/URL argument — so it's invisible to `ps`/process inspection and to any HTTP access logs that record URLs.
+- Poster and album art images go through the same stdin-authenticated `curl` request into a local cache (`~/.cache/omatulli/`), then `Image.source` points at the cached file. This avoids putting the key in a plain `Image { source: url }` binding, which QML has no way to attach auth headers to.
+- `~/.config/omatulli/.env` is set to mode `0600` automatically every time the plugin reads it. You can also set this yourself: `chmod 600 ~/.config/omatulli/.env`.
 
 ## Configuration
 
