@@ -29,7 +29,7 @@ Panel {
   readonly property color fg: root.bar ? root.bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(fg, 1.45)
   readonly property string fontFamily: root.bar ? root.bar.fontFamily : "JetBrainsMono Nerd Font"
-  readonly property string barIcon: "▶"
+  readonly property string barIcon: "" //  play
 
   property string apiKey: ""
   property string envBaseUrl: ""
@@ -183,12 +183,12 @@ Panel {
 
   function mediaIcon(s) {
     var t = s.media_type
-    if (t === "episode") return "📺"
-    if (t === "track") return "🎵"
-    if (t === "movie") return "🎬"
-    if (t === "clip") return "🎞"
-    if (t === "photo") return "🖼"
-    return "▶"
+    if (t === "episode") return "" //  television
+    if (t === "track") return ""   //  music
+    if (t === "movie") return ""   //  film
+    if (t === "clip") return ""    //  video-camera
+    if (t === "photo") return ""   //  picture-o
+    return ""                      //  play
   }
 
   function subtitleMeta(s) {
@@ -263,9 +263,9 @@ Panel {
 
   function statePlayIcon(state) {
     var s = String(state || "").toLowerCase()
-    if (s === "paused") return "⏸"
-    if (s === "buffering") return "⏳"
-    return "▶"
+    if (s === "paused") return ""    //  pause
+    if (s === "buffering") return "" //  spinner
+    return ""                        //  play
   }
 
   function parseEnv(raw) {
