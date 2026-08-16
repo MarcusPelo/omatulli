@@ -3,6 +3,7 @@
 An [Omarchy](https://omarchy.org/) bar widget for [Tautulli](https://tautulli.com/), the Plex Media Server monitoring tool. See what's currently playing across your Plex server — movies, TV episodes and music — as stacked cards with posters, stream details, progress and ETA.
 
 ![Panel](preview.png)
+![History](history.png)
 
 ## Features
 
@@ -16,6 +17,7 @@ An [Omarchy](https://omarchy.org/) bar widget for [Tautulli](https://tautulli.co
 - **Progress bar** with elapsed/total time and ETA (wall-clock finish time)
 - **User avatar + name** per session
 - **Location privacy** — shows `WAN`/`LAN` only by default instead of the public IP (toggle in settings)
+- **History** — last 10 played items (title, poster, user, time), one click/keypress away from the activity view
 
 ## Requirements
 
@@ -66,6 +68,7 @@ Available settings (`shell.json`, or `omarchy bar set marcuspelo.omatulli <key> 
 | Key | Action |
 |---|---|
 | `r` | Refresh |
+| `h` | Open history |
 | `esc` | Close the panel |
 
 ## Remove

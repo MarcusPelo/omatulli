@@ -44,6 +44,11 @@ Panel {
   property bool hasError: false
   property string errorText: ""
 
+  property var historyItems: []
+  property bool historyLoading: false
+  property bool hasHistoryError: false
+  property string historyErrorText: ""
+
   property var imageCache: ({})
   property var imageCacheError: ({})
   property var imageQueue: []
@@ -80,6 +85,20 @@ Panel {
     var hh = eta.getHours()
     var mm = eta.getMinutes()
     return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm
+  }
+
+  function historyDateLabel(item) {
+    var ts = Number(item.date) || 0
+    if (ts <= 0) return ""
+    var d = new Date(ts * 1000)
+    var now = new Date()
+    var hh = d.getHours()
+    var mm = d.getMinutes()
+    var time = (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm
+    if (d.toDateString() === now.toDateString()) return time
+    var mo = d.getMonth() + 1
+    var da = d.getDate()
+    return (mo < 10 ? "0" : "") + mo + "/" + (da < 10 ? "0" : "") + da + " " + time
   }
 
   function progressFraction(session) {
@@ -316,6 +335,35 @@ Panel {
     }
   }
 
+  function fetchHistory() {
+    if (!apiKeyLoaded || !apiKey || historyProc.running) return
+    historyLoading = true
+    hasHistoryError = false
+    historyErrorText = ""
+    // apikey goes over stdin (see onStarted below), never in argv or the URL.
+    historyProc.command = ["curl", "-fsS", "--max-time", "6", "--data", "@-", root.baseUrl + "/api/v2"]
+    historyProc.stdinEnabled = true
+    historyProc.running = true
+  }
+
+  function handleHistory(raw) {
+    historyLoading = false
+    try {
+      var data = JSON.parse(String(raw || "")).response.data
+      root.historyItems = data.data || []
+      hasHistoryError = false
+      historyErrorText = ""
+    } catch (e) {
+      hasHistoryError = true
+      historyErrorText = "Failed to read Tautulli response"
+    }
+  }
+
+  function openHistoryView() {
+    root.viewMode = "history"
+    root.fetchHistory()
+  }
+
   function triggerPress(button) {
     if (button === Qt.MiddleButton) { refresh(); return }
     if (opened) close(); else { open(); refresh() }
@@ -327,10 +375,6 @@ Panel {
     root.draftRefreshIntervalSec = root.pollInterval
     root.draftMaskLocation = root.maskLocation
     root.settingsStatusText = ""
-  }
-
-  function closeSettingsView() {
-    root.viewMode = "list"
   }
 
   function canPersistSettings() {
@@ -427,6 +471,26 @@ Panel {
   }
 
   Process {
+    id: historyProc
+    stdinEnabled: true
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.handleHistory(text)
+    }
+    onStarted: {
+      historyProc.write("apikey=" + root.apiKey + "&cmd=get_history&length=10&order_column=date&order_dir=desc")
+      historyProc.stdinEnabled = false
+    }
+    onExited: function(code) {
+      if (code !== 0) {
+        root.historyLoading = false
+        root.hasHistoryError = true
+        root.historyErrorText = "Tautulli unavailable at " + root.baseUrl
+      }
+    }
+  }
+
+  Process {
     id: imageFetchProc
     property string outFile: ""
     property string pendingKey: ""
@@ -514,6 +578,7 @@ Panel {
       onCloseRequested: root.close()
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
+        if (t === "h" || t === "H") root.openHistoryView()
       }
     }
 
@@ -529,7 +594,7 @@ Panel {
         spacing: 8
 
         Text {
-          text: root.barIcon + "  " + (root.viewMode === "settings" ? "Settings" : "Tautulli Activity")
+          text: root.barIcon + "  " + (root.viewMode === "settings" ? "Settings" : (root.viewMode === "history" ? "History" : "Tautulli Activity"))
           color: root.fg
           font.family: root.fontFamily
           font.pixelSize: Style.font.title
@@ -552,6 +617,18 @@ Panel {
 
         Button {
           visible: root.viewMode === "list"
+          text: "History"
+          foreground: root.fg
+          tooltipText: "Last 10 played items"
+          fontFamily: root.fontFamily
+          fontSize: Style.font.caption
+          horizontalPadding: Style.spacing.controlPaddingX
+          verticalPadding: Style.spacing.controlPaddingY
+          onClicked: root.openHistoryView()
+        }
+
+        Button {
+          visible: root.viewMode === "list"
           text: "⚙"
           foreground: root.fg
           tooltipText: "Settings"
@@ -563,14 +640,14 @@ Panel {
         }
 
         Button {
-          visible: root.viewMode === "settings"
+          visible: root.viewMode !== "list"
           text: "Back"
           foreground: root.fg
           fontFamily: root.fontFamily
           fontSize: Style.font.caption
           horizontalPadding: Style.spacing.controlPaddingX
           verticalPadding: Style.spacing.controlPaddingY
-          onClicked: root.closeSettingsView()
+          onClicked: root.viewMode = "list"
         }
       }
 
@@ -865,10 +942,106 @@ Panel {
         }
       }
 
+      ColumnLayout {
+        visible: root.viewMode === "history"
+        Layout.fillWidth: true
+        spacing: Style.space(10)
+
+        Text {
+          visible: root.hasHistoryError
+          Layout.fillWidth: true
+          text: root.historyErrorText
+          color: Color.urgent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        Text {
+          visible: !root.hasHistoryError && root.historyItems.length === 0
+          Layout.fillWidth: true
+          Layout.topMargin: 8
+          horizontalAlignment: Text.AlignHCenter
+          text: root.historyLoading ? "Loading…" : "No history yet"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        ListView {
+          id: historyList
+          visible: !root.hasHistoryError && root.historyItems.length > 0
+          Layout.fillWidth: true
+          Layout.preferredHeight: Math.min(historyList.contentHeight, Style.space(520))
+          clip: true
+          spacing: Style.space(8)
+          model: root.historyItems
+          boundsBehavior: Flickable.StopAtBounds
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+          delegate: RowLayout {
+            id: histRow
+            required property var modelData
+            width: historyList.width
+            spacing: Style.space(10)
+
+            Rectangle {
+              Layout.preferredWidth: 40
+              Layout.preferredHeight: 40
+              Layout.alignment: Qt.AlignTop
+              radius: Style.space(4)
+              color: Qt.rgba(root.fg.r, root.fg.g, root.fg.b, 0.08)
+              clip: true
+
+              Image {
+                anchors.fill: parent
+                source: root.posterUrl(histRow.modelData)
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                cache: true
+                smooth: true
+              }
+            }
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 2
+
+              Text {
+                Layout.fillWidth: true
+                text: histRow.modelData.full_title || histRow.modelData.title || "Unknown"
+                color: root.fg
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+              }
+
+              Text {
+                Layout.fillWidth: true
+                visible: root.subtitleMeta(histRow.modelData) !== "" || (histRow.modelData.friendly_name || histRow.modelData.user)
+                text: root.mediaIcon(histRow.modelData) + "  " + [root.subtitleMeta(histRow.modelData), histRow.modelData.friendly_name || histRow.modelData.user || ""].filter(function(p) { return !!p }).join(" · ")
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
+            }
+
+            Text {
+              Layout.alignment: Qt.AlignTop
+              text: root.historyDateLabel(histRow.modelData)
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+        }
+      }
+
       Text {
         Layout.fillWidth: true
         Layout.topMargin: 4
-        text: "r refresh · esc close"
+        text: "r refresh · h history · esc close"
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
