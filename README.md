@@ -68,7 +68,7 @@ Available settings (`shell.json`, or `omarchy bar set marcuspelo.omatulli <key> 
 | Key | Action |
 |---|---|
 | `r` | Refresh |
-| `h` | Open history |
+| `v` | Open history |
 | `esc` | Close the panel |
 
 ## Remove

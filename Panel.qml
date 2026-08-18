@@ -578,7 +578,7 @@ Panel {
       onCloseRequested: root.close()
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
-        if (t === "h" || t === "H") root.openHistoryView()
+        if (t === "v" || t === "V") root.openHistoryView()
       }
     }
 
@@ -1041,7 +1041,7 @@ Panel {
       Text {
         Layout.fillWidth: true
         Layout.topMargin: 4
-        text: "r refresh · h history · esc close"
+        text: "r refresh · v history · esc close"
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
